@@ -1,0 +1,129 @@
+.flappyBird-wrapper {
+  position: relative;
+}
+.flappyBird-wrapper .btns-wrapper button{
+  /* 基础定位 */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+
+  /* 视觉样式 */
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #82eb86 0%, #42a647 100%);
+  ;
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3),
+    0 2px 4px -1px rgba(79, 70, 229, 0.2);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+/* 悬停效果 */
+.flappyBird-wrapper .btns-wrapper button:hover {
+  background: linear-gradient(135deg, #388E3C 0%, #237829 100%);
+  box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3),
+    0 4px 6px -2px rgba(79, 70, 229, 0.2);
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* 点击效果 */
+.flappyBird-wrapper .btns-wrapper button:active {
+  transform: translateX(-50%) scale(0.98);
+}
+
+.flappyBird-wrapper .btns-wrapper .btn-start {
+  top: 200px;
+}
+
+.flappyBird-wrapper .btns-wrapper .btn-create-room {
+  top: 280px;
+}
+
+.flappyBird-wrapper .btns-wrapper .btn-join-room {
+  top: 360px;
+}
+
+.flappyBird-wrapper .btns-wrapper .btn-check-grades {
+  top: 440px;
+}
+
+.btn-restart {
+  top: 300px;
+}
+
+.btn-exit {
+  top: 380px;
+}
+
+.generic-list-container{
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 300px;
+  padding: 20px;
+  background-color: #8B4513;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+.generic-list-container h3 {
+  color: white;
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.generic-list-container ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.generic-list-container ul li:hover{
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.generic-list-container ul li.active{
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.generic-list-container ul li div{
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  margin-bottom: 10px;
+}
+
+.generic-list-container ul li img {
+  width: 40px;
+  height: 40px;
+  margin-right: 10px;
+  object-fit: contain;
+}
+
+.generic-list-container ul li span {
+  color: white;
+  font-size: 16px;
+}
+
+.generic-list-container button {
+  top: 12px;
+  position: absolute;
+  background-color:antiquewhite;
+  border-radius: 5px;
+}
+.generic-list-container button:hover{
+  background-color: rgb(242, 214, 179);
+}
+.generic-list-container .room-back{
+  left: 12px;
+}
+.generic-list-container .room-start{
+  right: 12px;
+}

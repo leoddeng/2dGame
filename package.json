@@ -4,11 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
+    "flappyBird:start": "node ./scripts/flappyBird.js",
     "preview": "vite preview"
   },
   "devDependencies": {
     "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "vite-plugin-singlefile": "^2.2.0",
+    "ws": "^8.18.2"
   }
 }

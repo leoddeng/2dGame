@@ -14,6 +14,93 @@ const BIRD_CONFIG = {
   y: CONFIG.height / 2,
   size: 30,
 };
+/**
+ * 通用列表组件
+ * @param {Object} options 配置选项
+ * @param {string} options.title 列表标题
+ * @param {Array} options.items 列表项数据
+ * @param {Function} options.renderItem 自定义列表项渲染函数
+ * @param {string} options.buttonText 按钮文本
+ * @param {Function} options.onButtonClick 按钮点击回调
+ * @returns {Object} 返回组件对象，包含container和updateItems方法
+ */
+function createGenericList(options) {
+  // 创建容器
+  const container = document.createElement("div");
+  container.className = "generic-list-container";
+
+  // 创建标题
+  const title = document.createElement("h3");
+  title.textContent = options.title || "列表";
+  container.appendChild(title);
+
+  // 创建列表
+  const list = document.createElement("ul");
+  container.appendChild(list);
+
+  // 渲染列表项
+  const renderItems = () => {
+    list.innerHTML = "";
+    options.items.forEach((item) => {
+      const listItem = document.createElement("li");
+      listItem.addEventListener("click", () => {
+        Array.from(list.children).forEach((li) => {
+          li.classList.remove("active");
+        });
+        // 为当前点击项添加选中状态
+        listItem.classList.add("active");
+      });
+      if (options.renderItem) {
+        // 使用自定义渲染函数
+        listItem.appendChild(options.renderItem(item));
+      } else {
+        // 默认渲染方式
+        const content = document.createElement("span");
+        content.textContent = item.toString();
+        listItem.appendChild(content);
+      }
+
+      list.appendChild(listItem);
+    });
+  };
+
+  // 初始渲染
+  renderItems();
+  const button = document.createElement("button");
+  button.className = "btn-back";
+  button.textContent = "返回";
+  button.addEventListener("click", () => {
+    if (options.onButtonClick) {
+      options.onBackClick();
+    }
+  });
+  container.appendChild(button);
+  // 添加按钮
+  if (options.buttonText) {
+    const button = document.createElement("button");
+    button.className = "btn-start";
+    button.textContent = options.buttonText;
+    button.addEventListener("click", () => {
+      if (options.onButtonClick) {
+        options.onButtonClick();
+      }
+    });
+    container.appendChild(button);
+  }
+
+  // 返回组件对象
+  return {
+    container,
+    updateItems: (newItems) => {
+      options.items = newItems;
+      renderItems();
+    },
+    updateTitle: (newTitle) => {
+      options.title = newTitle;
+      title.textContent = newTitle;
+    },
+  };
+}
 
 // 基类：游戏实体
 class GameEntity {
@@ -109,9 +196,18 @@ class FlappyGame {
     this.ctx = this.canvas.getContext("2d");
     this.canvas.width = CONFIG.width;
     this.canvas.height = CONFIG.height;
-    this.container.appendChild(this.canvas);
+    this.wrapperDom = document.createElement("div");
+    this.wrapperDom.className = "flappyBird-wrapper";
+    this.wrapperDom.appendChild(this.canvas);
+    this.container.appendChild(this.wrapperDom);
     this.requestAnimationFrameHandle = null;
     this.jumpTimeoutHandle = null;
+    this.gui = {
+      startGuiBtns: [],
+      endGuiBtns: [],
+      createRoomGui: null,
+      joinRoomGui: null,
+    };
     // 资源加载
     this.resourcesUrl = {
       birdFrames: Array.from(
@@ -120,8 +216,8 @@ class FlappyGame {
       ),
       background: "/src/games/flappyBird/assets/bg.png",
       ground: "/src/games/flappyBird/assets/ground.png",
-      start: "/src/games/flappyBird/assets/start.png",
-      gameover: "/src/games/flappyBird/assets/gameover.png",
+      // start: "/src/games/flappyBird/assets/start.png",
+      // gameover: "/src/games/flappyBird/assets/gameover.png",
       pipe: "/src/games/flappyBird/assets/pipe.png",
     };
     this.resources = {};
@@ -145,6 +241,54 @@ class FlappyGame {
       this.resourcesLoaded = true;
       this.initGame();
     });
+    this.playerId = "";
+    this.roomId = "";
+    this.ws = new WebSocket("ws://localhost:8080");
+    this.ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      switch (data.type) {
+        case "createRole":
+          this.playerId = data.playerId;
+          break;
+        case "roomCreated":
+          this.roomId = data.roomId;
+          this.gui.createRoomGui.updateTitle("房间成员 (1/4)");
+          this.gui.createRoomGui.updateItems([
+            {
+              avatar: "/src/games/flappyBird/assets/0.png",
+              id: data.playerId,
+            },
+          ]);
+          break;
+        case "pipeGenerate":
+          this.pipes.push(
+            new Pipe(CONFIG.width, data.gapY, this.resources.pipe)
+          );
+          break;
+        case "showRoom":
+          this.gui.joinRoomGui.updateTitle(`房间数 ${data.rooms.length}`);
+          this.gui.joinRoomGui.updateItems(data.rooms.map((id) => ({ id })));
+          break;
+        case "playerJoined":
+        case "getPlayers":
+          this.gui.createRoomGui.updateTitle(
+            `房间成员 (${data.players.length}/4)`
+          );
+          this.gui.createRoomGui.updateItems(
+            data.players.map((id) => ({
+              id,
+              avatar: "/src/games/flappyBird/assets/0.png",
+            }))
+          );
+          break;
+        case "playGame":
+          this.startGame();
+          break;
+        case "gameOver":
+          this.renderGameOver(data.msg);
+          break;
+      }
+    };
   }
   initGame() {
     // 初始化游戏对象
@@ -160,18 +304,201 @@ class FlappyGame {
     this.gameOver = false;
     this.frameCount = 0;
     this.gameStarted = false;
-
     this.setupInput();
     this.renderStartScreen();
   }
 
+  drawStartGuiBtn() {
+    if (this.gui.startGuiBtns.length)
+      return this.showBtns(this.gui.startGuiBtns);
+    const fragment = document.createDocumentFragment();
+
+    const startBtn = document.createElement("button");
+    startBtn.innerHTML = "开始游戏";
+    startBtn.className = "btn-start";
+    startBtn.addEventListener("click", () => {
+      this.startGame();
+    });
+    this.gui.startGuiBtns.push(startBtn);
+    fragment.appendChild(startBtn);
+
+    const createRoomBtn = document.createElement("button");
+    createRoomBtn.innerHTML = "创建房间";
+    createRoomBtn.className = "btn-create-room";
+    createRoomBtn.addEventListener("click", () => {
+      this.ws.send(JSON.stringify({ type: "createRoom" }));
+      this.hideBtns(this.gui.startGuiBtns);
+      this.gui.createRoomGui = this.drawCreateRoom({
+        title: "房间成员 (0/4)",
+        items: [],
+        renderItem: (item) => {
+          const wrapper = document.createElement("div");
+
+          const avatar = document.createElement("img");
+          avatar.src = item.avatar;
+
+          const idSpan = document.createElement("span");
+          idSpan.textContent = item.id;
+
+          wrapper.appendChild(avatar);
+          wrapper.appendChild(idSpan);
+          return wrapper;
+        },
+        buttonText: "开始游戏",
+        onButtonClick: () => {
+          this.gui.createRoomGui.container.style.display = "none";
+          this.ws.send(
+            JSON.stringify({
+              type: "playGame",
+              roomId: this.roomId,
+              msg: "start",
+            })
+          );
+        },
+        onBackClick: () => {
+          this.gui.createRoomGui.container.style.display = "none";
+          this.showBtns(this.gui.startGuiBtns);
+        },
+      });
+    });
+    this.gui.startGuiBtns.push(createRoomBtn);
+    fragment.appendChild(createRoomBtn);
+
+    const joinRoomBtn = document.createElement("button");
+    joinRoomBtn.innerHTML = "加入房间";
+    joinRoomBtn.className = "btn-join-room";
+    joinRoomBtn.addEventListener("click", () => {
+      this.ws.send(
+        JSON.stringify({
+          type: "showRoom",
+        })
+      );
+      this.hideBtns(this.gui.startGuiBtns);
+      this.gui.joinRoomGui = this.drawJoinRoom({
+        title: "房间数 0",
+        items: [{ id: "Room1" }],
+        renderItem: (item) => {
+          const wrapper = document.createElement("div");
+          const idSpan = document.createElement("span");
+          idSpan.textContent = item.id;
+          wrapper.addEventListener("click", () => {
+            this.roomId = item.id;
+          });
+          wrapper.appendChild(idSpan);
+          return wrapper;
+        },
+        buttonText: "加入房间",
+        onButtonClick: () => {
+          this.ws.send(
+            JSON.stringify({
+              playerId: this.playerId,
+              type: "joinRoom",
+              roomId: this.roomId,
+              msg: "join",
+            })
+          );
+          this.gui.joinRoomGui.container.style.display = "none";
+          this.gui.createRoomGui = null;
+          this.gui.createRoomGui = this.drawCreateRoom({
+            title: "房间成员 (0/4)",
+            items: [],
+            renderItem: (item) => {
+              const wrapper = document.createElement("div");
+
+              const avatar = document.createElement("img");
+              avatar.src = item.avatar;
+
+              const idSpan = document.createElement("span");
+              idSpan.textContent = item.id;
+              wrapper.appendChild(avatar);
+              wrapper.appendChild(idSpan);
+              return wrapper;
+            },
+            onBackClick: () => {
+              this.gui.createRoomGui.container.style.display = "none";
+              this.gui.joinRoomGui.container.style.display = "block";
+            },
+          });
+        },
+        onBackClick: () => {
+          this.gui.joinRoomGui.container.style.display = "none";
+          this.showBtns(this.gui.startGuiBtns);
+        },
+      });
+    });
+    this.gui.startGuiBtns.push(joinRoomBtn);
+    fragment.appendChild(joinRoomBtn);
+
+    const checkGradesBtn = document.createElement("button");
+    checkGradesBtn.innerHTML = "查看成绩";
+    checkGradesBtn.className = "btn-check-grades";
+    this.gui.startGuiBtns.push(checkGradesBtn);
+    fragment.appendChild(checkGradesBtn);
+
+    this.wrapperDom.appendChild(fragment);
+  }
+  drawEndGuiBtn() {
+    if (this.gui.endGuiBtns.length) return this.showBtns(this.gui.endGuiBtns);
+    const fragment = document.createDocumentFragment();
+    const restartBtn = document.createElement("button");
+    restartBtn.innerHTML = "重新开始";
+    restartBtn.className = "btn-restart";
+    restartBtn.addEventListener("click", () => {
+      this.ws.send(
+        JSON.stringify({
+          type: "playGame",
+          roomId: this.roomId,
+          msg: "start",
+        })
+      );
+      this.startGame();
+    });
+    this.gui.endGuiBtns.push(restartBtn);
+    fragment.appendChild(restartBtn);
+
+    const exitBtn = document.createElement("button");
+    exitBtn.innerHTML = "回到菜单";
+    exitBtn.className = "btn-exit";
+    exitBtn.addEventListener("click", () => {
+      this.renderStartScreen();
+    });
+    this.gui.endGuiBtns.push(exitBtn);
+    fragment.appendChild(exitBtn);
+    this.wrapperDom.appendChild(fragment);
+
+    this.wrapperDom.appendChild(fragment);
+  }
+  hideBtns(btns) {
+    btns.forEach((e) => {
+      e.style.display = "none";
+    });
+  }
+  showBtns(btns) {
+    btns.forEach((e) => {
+      e.style.display = "block";
+    });
+  }
+  drawCreateRoom(options) {
+    if (this.gui.createRoomGui) {
+      this.gui.createRoomGui.container.style.display = "block";
+      return this.gui.createRoomGui;
+    }
+    const roomList = createGenericList(options);
+    this.wrapperDom.appendChild(roomList.container);
+    return roomList;
+  }
+  drawJoinRoom(options) {
+    if (this.gui.joinRoomGui) {
+      this.gui.joinRoomGui.container.style.display = "block";
+      return this.gui.joinRoomGui;
+    }
+    const roomList = createGenericList(options);
+    this.wrapperDom.appendChild(roomList.container);
+    return roomList;
+  }
   setupInput() {
     const handleStart = () => {
-      if (!this.gameStarted) {
-        this.gameStarted = true;
-        this.audio.bgMusic.play();
-        this.startGame();
-      } else if (!this.gameOver) {
+      if (this.gameStarted && !this.gameOver) {
         this.jumpTimeoutHandle = setTimeout(() => {
           if (this.jumpTimeoutHandle) {
             clearTimeout(this.jumpTimeoutHandle);
@@ -184,12 +511,9 @@ class FlappyGame {
         }, 0);
         this.bird.jump();
       } else {
-        this.audio.bgMusic.currentTime = 0;
-        this.audio.bgMusic.play();
-        this.resetGame();
+        this.startGame();
       }
     };
-
     document.addEventListener("keydown", (e) => {
       if (e.code === "Space") handleStart();
     });
@@ -307,9 +631,9 @@ class FlappyGame {
     // 更新状态
     this.bird.update();
 
-    if (this.frameCount % 150 === 0) {
-      this.generatePipe();
-    }
+    // if (this.frameCount % 150 === 0) {
+    //   this.generatePipe();
+    // }
 
     this.pipes.forEach((pipe) => pipe.update());
     this.updateScore();
@@ -339,10 +663,25 @@ class FlappyGame {
       CONFIG.width,
       CONFIG.height
     );
-
-    this.ctx.drawImage(this.resources.start, 0, 0, CONFIG.width, CONFIG.height);
-
+    this.ctx.save();
+    this.ctx.font = "bold 52px 'Courier New', monospace";
+    const gradient = this.ctx.createLinearGradient(0, 0, CONFIG.width, 0);
+    gradient.addColorStop(0, "#82eb86"); // 浅绿
+    gradient.addColorStop(1, "#82eb86"); // 深绿
+    this.ctx.fillStyle = gradient;
+    this.ctx.shadowColor = "#2E7D32"; // 阴影颜色（深绿）
+    this.ctx.shadowBlur = 8; // 模糊程度
+    this.ctx.shadowOffsetX = 3; // 水平偏移
+    this.ctx.shadowOffsetY = 3; // 垂直偏移
+    this.ctx.fillText("GET READY?", CONFIG.width / 2, 100);
+    this.ctx.textAlign = "center"; // 建议改为居中显示更协调
+    this.ctx.restore();
+    // this.ctx.drawImage(this.resources.start, 0, 0, CONFIG.width, CONFIG.height);
+    this.drawStartGuiBtn();
+    this.drawEndGuiBtn();
+    this.hideBtns(this.gui.endGuiBtns);
     // 绘制作者信息
+    this.ctx.save();
     this.ctx.font = "16px Arial";
     this.ctx.fillStyle = "white";
     this.ctx.fillText(
@@ -351,6 +690,7 @@ class FlappyGame {
       CONFIG.height - 30
     );
     this.ctx.textAlign = "left";
+    this.ctx.restore();
   }
   // 修改后的render方法
   render() {
@@ -376,25 +716,46 @@ class FlappyGame {
     }
 
     // 绘制分数
+    this.ctx.save();
+    this.ctx.textAlign = "left";
     this.ctx.fillStyle = "#fff";
     this.ctx.font = "16px Arial";
     this.ctx.fillText(`Score: ${this.score}`, 20, 40);
     this.ctx.fillText(`​​High score: ${this.maxScore}`, 20, 60);
+    this.ctx.restore();
     // 游戏结束提示
     if (this.gameOver) {
+      this.ws.send(
+        JSON.stringify({
+          type: "gameOver",
+          score: this.score,
+          playerId: this.playerId,
+          roomId: this.roomId,
+        })
+      );
       this.audio.bgMusic.pause();
       cancelAnimationFrame(this.requestAnimationFrameHandle);
-      this.renderGameOver();
+      // this.renderGameOver();
     }
   }
-  renderGameOver() {
-    this.ctx.drawImage(
-      this.resources.gameover,
-      0,
-      0,
-      CONFIG.width,
-      CONFIG.height
-    );
+  renderGameOver(msg = "GameOver") {
+    this.ctx.save();
+    this.ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; // 70%不透明度
+    this.ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+    this.ctx.font = "bold 52px 'Courier New', monospace";
+    const gradient = this.ctx.createLinearGradient(0, 0, CONFIG.width, 0);
+    gradient.addColorStop(0, "orange");
+    gradient.addColorStop(1, "orange");
+    this.ctx.fillStyle = gradient;
+    this.ctx.shadowColor = "#2E7D32";
+    this.ctx.shadowBlur = 8;
+    this.ctx.shadowOffsetX = 3;
+    this.ctx.shadowOffsetY = 3;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle"; // 新增垂直居中
+    this.ctx.fillText(msg, CONFIG.width / 2, CONFIG.height / 2 - 100); // 修改坐标
+    this.ctx.restore();
+    this.showBtns(this.gui.endGuiBtns);
   }
   updateGround() {
     // 绘制地面（双图循环）
@@ -411,17 +772,23 @@ class FlappyGame {
     }
   }
   startGame() {
-    this.gameOver = false;
-    this.gameLoop();
-  }
+    console.log(this.gui);
 
-  resetGame() {
+    this.gui.createRoomGui &&
+      (this.gui.createRoomGui.container.style.display = "none");
+    this.gui.joinRoomGui &&
+      (this.gui.joinRoomGui.container.style.display = "none");
     this.bird.reset();
     this.pipes = [];
     this.score = 0;
     this.frameCount = 0;
+    this.gameStarted = true;
+    this.audio.bgMusic.currentTime = 0;
+    this.audio.bgMusic.play();
     this.gameOver = false;
-    this.startGame();
+    this.hideBtns(this.gui.startGuiBtns);
+    this.hideBtns(this.gui.endGuiBtns);
+    this.gameLoop();
   }
 }
 

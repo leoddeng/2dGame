@@ -4,15 +4,13 @@ const exitBtn = document.querySelector(".exit-btn");
 
 // 游戏模块映射
 const gameModules = {
-  flappyBird: () => import("./games/flappyBird/index.js"),
+  flappyBird: () => import("./games/flappyBird/index2.js"),
   pubg: () => import("./games/pubg/index.js"),
 };
 
 // 事件代理
 gameList.addEventListener("click", async (e) => {
   const game = e.target.dataset.game;
-  console.log(e, game);
-
   if (!game) return;
   try {
     const gameModule = await gameModules[game]();
